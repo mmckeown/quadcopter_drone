@@ -16,6 +16,7 @@ public:
 
 private:
     QHBoxLayout*        m_hBox;
+    QPushButton*        m_compassButton;
     Compass*            m_compass;
     AttitudeIndicator*  m_attInd;
 };
