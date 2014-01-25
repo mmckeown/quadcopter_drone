@@ -1,0 +1,51 @@
+P_EOC -> BMP085 pin 2 (EOC - End of conversion) - Output
+P_XCLK -> BMP085 pin 8 (XCLR - master clear - active low) - Input
+T_INT1 -> L3G4200D pin 7 (INT1 - Programmable interrupt - Output
+A_INT1 -> ADXL345 pin 8 (INT1 - Interrupt 1 output) - Output
+M_DRDY -> HMC5883L pin 15 (DRDY - Data ready interrupt pin) - Output
+SDA -> All parts SDA 
+SCL -> All parts SCL
+GND -> All parts GND and others (see below)
+VCC3.3 -> All parts VDD and others (see below)
+VCC5.0 -> To voltage regulator
+
+Notes:
+	- Pull up resistors are already on the IMU board
+	- L3G4200D
+		- Pin 1 (VDD_IO) is connected to 3.3V
+		- Pin 4 (SDO) is connected to 3.3 V
+		- Pin 5 (CS) is connected to 3.3V
+		- Pin 6 (DRDY/INT2) seems unconnected
+		- Pin 8 - 12 (RES) are connected to GND
+		- Pin 13 (GND) is connected to GND
+		- Pin 14 (PLLFILT) is connected to PLLFILT circuit
+		- Pin 15 (RES) is connected to 3.3V
+		- Pin 16 (VDD) is connected to 3.3V
+	- ADXL345
+		- Pin 1 (VDD_IO) is connected to 3.3V
+		- Pin 2 (GND) is connected to GND
+		- Pin 3 (RESERVED) seems unconnected
+		- Pin 4 - 5 (GND) is connected to GND
+		- Pin 6 (VS) is connected to 3.3V
+		- Pin 7 (CS_) is connected to 3.3V
+		- Pin 9 (INT2) seems unconnected
+		- Pin 10 (NC) seems unconnected
+		- Pin 11 (RESERVED) seems unconnected
+		- Pin 12 (SDO) is connected to GND
+	- HMC5883L
+		- Pin 2 (VDD) is conncted to 3.3V
+		- Pin 3 (NC) seems unconnected
+		- Pin 4 (S1) is connected to 3.3V
+		- Pin 5 - 7 (NC) seem unconnected
+		- Pin 8 (SETP) is connected to C2 capacitor
+		- Pin 9 (GND) is connected to GND
+		- Pin 10 (C1) is connected to C1 capacitor
+		- Pin 11 (GND) is connected to GND
+		- Pin 12 (SETC) is connected to C2 capacitor
+		- Pin 13 (VDDIO) is connected to 3.3V
+		- Pin 14 (NC) seems unconnected
+	- BMP085
+		- Pin 1 (GND) is connected to GND
+		- Pin 3 (VDDA) is connected to 3.3V
+		- Pin 4 (VDDD) is connected to 3.3V
+		- Pin 5 (NC) seems unconnected
