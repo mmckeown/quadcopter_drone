@@ -1,5 +1,8 @@
 #include "Wire.h"
 #include "L3G4200D.h"
+#include "ADXL345.h"
+#include "HMC5883L.h"
+#include "BMP085.h"
 
 // LED blinking
 const int LED = 13;
@@ -7,24 +10,21 @@ int led_val = LOW;
 
 // Gyro
 L3G4200D gyro;
-double angleX = 0;
-double angleY = 0;
-double angleZ = 0;
+uint8_t tempGyro;
+L3G4200D::vector16b rawGyro;
 
-void printDouble( double val, unsigned int precision){
-// prints val with number of decimal places determine by precision
-// NOTE: precision is 1 followed by the number of zeros for the desired number of decimial places
-// example: printDouble( 3.1415, 100); // prints 3.14 (two decimal places)
+// Accelerometer
+ADXL345 acc;
+ADXL345::vector16b rawAcc;
 
-    Serial.print (int(val));  //prints the int part
-    Serial.print("."); // print the decimal point
-    unsigned int frac;
-    if(val >= 0)
-        frac = (val - int(val)) * precision;
-    else
-        frac = (int(val)- val ) * precision;
-    Serial.print(frac,DEC) ;
-}
+// Magnometer
+HMC5883L magno;
+HMC5883L::vector16b rawMagno;
+
+// Barometer and thermometer
+BMP085 barTemp;
+int16_t  temp;
+int32_t  pressure;
 
 //
 // Main Program
@@ -41,86 +41,120 @@ void setup ()
   Wire.begin();
   Serial.begin(9600);
   
-  
-  
-  // Disable power down state
+  // Disable gyro power down state
   gyro.writeReg (L3G4200D::CTRL_REG1, L3G4200D::DR0 | 
                                       L3G4200D::BW0 |
                                       L3G4200D::PD_DISABLE |
                                       L3G4200D::Z_ENABLE |
                                       L3G4200D::Y_ENABLE |
                                       L3G4200D::X_ENABLE);
+   // Put accelerometer in measure mode
+   acc.writeReg (ADXL345::POWER_CTRL_REG, ADXL345::MEASURE_ENABLE |
+                                          ADXL345::WAKEUP_8HZ);
+                                          
+   // Configure magnometer
+   magno.writeReg (HMC5883L::CONFIG_REGA, HMC5883L::SAMPLES_AVG_1 |
+                                          HMC5883L::DOR_75_HZ);
+   magno.writeReg (HMC5883L::MODE_REG, HMC5883L::CONTINUOUS_MODE);
 }
 
 void loop ()
 {
-  uint8_t val = 0;
+  // Flash LED
+  if (led_val == LOW)
+  {
+    digitalWrite (LED, HIGH);
+    led_val = HIGH;
+  }
+  else
+  {
+    digitalWrite (LED, LOW);
+    led_val = LOW;
+  }
   
-  // Read status reg
+  // Update barometer/thermometer
+  temp = barTemp.readRawTempSync ();
+  pressure = barTemp.readRawPressureSync (BMP085::OSSR_STANDARD);
+  
+  // Print barometer and thermometer data
+  Serial.println ("Barometer and Thermometer:");
+  Serial.print ("RawTemp=");
+  Serial.println (temp, DEC);
+  Serial.print ("RawPressure=");
+  Serial.println (pressure, DEC);
+  
+  uint8_t val = 0;
+
+  // Update gyro data
+  bool gyroOverrun = false;
   val = gyro.readReg (L3G4200D::STATUS_REG);
   if (val & L3G4200D::ZYXDA_MASK)
   {
+    // Check for overrun
     if (val & L3G4200D::ZYXOR_MASK)
-      Serial.println  ("Too Slow!");
+      gyroOverrun = true;
     
-    // Flash LED
-    if (led_val == LOW)
-    {
-      digitalWrite (LED, HIGH);
-      led_val = HIGH;
-    }
-    else
-    {
-      digitalWrite (LED, LOW);
-      led_val = LOW;
-    }
+    // Read temp
+    tempGyro = gyro.readReg (L3G4200D::OUT_TEMP_REG);
     
-    val = gyro.readReg (L3G4200D::OUT_TEMP_REG);
-    Serial.print ("OUT_TEMP=");
-    Serial.println (val, DEC);
-    
-    
-    L3G4200D::vector16b raw;
-    raw = gyro.readRaw ();
-    Serial.print ("RawX=");
-    Serial.println (raw.x, DEC);
-    Serial.print ("RawY=");
-    Serial.println (raw.y, DEC);
-    Serial.print ("RawZ=");
-    Serial.println (raw.z, DEC);
-    
-    Serial.println ("");
-    
-    double vec_x, vec_y, vec_z;
-    vec_x = ((double) raw.x) * 0.00875;
-    vec_y = ((double) raw.y) * 0.00875;
-    vec_z = ((double) raw.z) * 0.00875;
-    
-    Serial.print ("VecX=");
-    printDouble (vec_x, 100);
-    Serial.println (" dps");
-    Serial.print ("VecY=");
-    printDouble (vec_y, 100);
-    Serial.println (" dps");
-    Serial.print ("VecZ=");
-    printDouble (vec_z, 100);
-    Serial.println (" dps");
-    Serial.println ("");
-
-    angleX += vec_x * 0.01;
-    angleY += vec_y * 0.01;
-    angleZ += vec_z * 0.01;
-    
-    Serial.print ("AngleX=");
-    printDouble (angleX, 100);
-    Serial.println (" degrees");
-    Serial.print ("AngleY=");
-    printDouble (angleY, 100);
-    Serial.println (" degrees");
-    Serial.print ("AngleZ=");
-    printDouble (angleZ, 100);
-    Serial.println (" degrees");
+    // Read raw gyro data
+    rawGyro = gyro.readRaw ();
   }
   
-  delay (1);
+  // Print gyro data
+  Serial.println ("Gyro:");
+  //if (gyroOverrun)
+  //  Serial.println ("Overrun!");
+  Serial.print ("RawTemp=");
+  Serial.println (tempGyro, DEC);
+  Serial.print ("RawX=");
+  Serial.println (rawGyro.x, DEC);
+  Serial.print ("RawY=");
+  Serial.println (rawGyro.y, DEC);
+  Serial.print ("RawZ=");
+  Serial.println (rawGyro.z, DEC);
+  Serial.println ("");
+  
+  // Update accelerometer data
+  bool accOverrun = false;
+  val = acc.readReg (ADXL345::INT_SOURCE_REG);
+  if (val & ADXL345::DATA_RDY_MASK)
+  {
+    // Check for overrun
+    if (val & ADXL345::OVERRUN_MASK)
+      accOverrun = true;
+      
+    // Read raw accelerometer data
+    rawAcc = acc.readRaw ();
+  }
+  
+  // Print accelerometer data
+  Serial.println ("Accelerometer:");
+  //if (accOverrun)
+  //  Serial.println ("Overrun!");
+  Serial.print ("RawX=");
+  Serial.println (rawAcc.x, DEC);
+  Serial.print ("RawY=");
+  Serial.println (rawAcc.y, DEC);
+  Serial.print ("RawZ=");
+  Serial.println (rawAcc.z, DEC);
+  Serial.println ("");
+  
+  // Update magnometer data
+  //val = acc.readReg (HMC5883L::STATUS_REG);
+  //if (val & HMC5883L::RDY_MASK)
+  //{ 
+    // Read raw magnometer data
+    rawMagno = magno.readRaw ();
+  //}
+  
+  // Print magnometer data
+  Serial.println ("Magnometer:");
+  Serial.print ("RawX=");
+  Serial.println (rawMagno.x, DEC);
+  Serial.print ("RawY=");
+  Serial.println (rawMagno.y, DEC);
+  Serial.print ("RawZ=");
+  Serial.println (rawMagno.z, DEC);
+  Serial.println ("");
 }
