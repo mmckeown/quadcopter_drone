@@ -24,7 +24,8 @@ class BMP085
   
   // Callback typdefs
   typedef void (*TemperatureCallback)(int16_t _rawTemp, double _tempC, double _tempF);
-  typedef void (*PressureCallback) (int32_t _rawPressure, double _pressurehPa, double _altitude);
+  typedef void (*PressureCallback) (int32_t _rawPressure, double _pressurehPa);
+  typedef void (*AltitudeCallback) (double _altitudeM, double _altitudeF);
   
   // ISRs
   typedef void (*ISRFunc) (); // should just call BMP085::eocISR
@@ -35,6 +36,8 @@ class BMP085
   // Register callbacks
   void registerTemperatureCallback (TemperatureCallback _cb);
   void registerPressureCallback (PressureCallback _cb);
+  void registerAltitudeCallback (AltitudeCallback _cb);
+  // TODO: Vertical speed????
   
   // Initialize
   void init ();
@@ -144,6 +147,7 @@ class BMP085
   // Calbacks for asynchronous operation
   TemperatureCallback  m_tempCB;
   PressureCallback     m_pressureCB;
+  AltitudeCallback     m_altitudeCB;
   
   // Private helper functions
   uint8_t readReg (const uint8_t _reg);

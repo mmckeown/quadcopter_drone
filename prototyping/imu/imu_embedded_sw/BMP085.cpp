@@ -28,7 +28,8 @@ BMP085::BMP085 ()
     m_rawTempAsync (0),
     m_avgFilter (false),
     m_tempCB (NULL),
-    m_pressureCB (NULL)
+    m_pressureCB (NULL),
+    m_altitudeCB (NULL)
 {
   for (int32_t i = 0; i < COEFZ; i++)
     m_k[i] = 0;
@@ -46,6 +47,11 @@ void BMP085::registerTemperatureCallback (TemperatureCallback _cb)
 void BMP085::registerPressureCallback (PressureCallback _cb)
 {
   m_pressureCB = _cb;
+}
+
+void BMP085::registerAltitudeCallback (AltitudeCallback _cb)
+{
+  m_altitudeCB = _cb;
 }
 
 void BMP085::init ()
@@ -147,12 +153,15 @@ void BMP085::eocISR ()
       double pressurehPa = ((double) p) / 100.0;
       
       double altitudeM = 44330.0 * (1.0 - pow (pressurehPa / PRESSURE_SEA_LEVEL_HPA, 1 / 5.255)); 
+      double altitudeF = altitudeM * 3.2808;
       
       // Make callbacks
       if (m_tempCB)
         m_tempCB (m_rawTempAsync, tempC, tempF);
       if (m_pressureCB)
-        m_pressureCB (pressure, pressurehPa, altitudeM);
+        m_pressureCB (pressure, pressurehPa);
+      if (m_altitudeCB)
+        m_altitudeCB (altitudeM, altitudeF);
       
       // start another temperature reading
       writeReg (CTRL_REG, TEMPERATURE);
