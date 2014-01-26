@@ -22,9 +22,50 @@ HMC5883L magno;
 HMC5883L::vector16b rawMagno;
 
 // Barometer and thermometer
-BMP085 barTemp;
-int16_t  temp;
-int32_t  pressure;
+const int EOC_PIN = 14;
+BMP085     g_barTemp;
+int16_t    g_bmp085RawTemp = 0;
+double     g_bmp085TempC = 0.0;
+double     g_bmp085TempF = 0.0;
+int32_t    g_bmp085RawPressure = 0.0;
+double     g_bmp085PressurehPa = 0.0;
+double     g_bmp085AltitudeM = 0.0;
+
+// ISRs
+void bmp085EOCISR ()
+{
+  g_barTemp.eocISR ();
+}
+
+// Callbacks
+void bmp085TempCallback (int16_t _rawTemp, double _tempC, double _tempF)
+{
+  g_bmp085RawTemp = _rawTemp;
+  g_bmp085TempC = _tempC;
+  g_bmp085TempF = _tempF;
+}
+void bmp085PressureCallback (int32_t _rawPressure, double _pressurehPa, double _altitudeM)
+{
+  g_bmp085RawPressure = _rawPressure;
+  g_bmp085PressurehPa = _pressurehPa;
+  g_bmp085AltitudeM = _altitudeM;
+}
+
+// Helper functions
+void printDouble( double val, unsigned int precision){
+// prints val with number of decimal places determine by precision
+// NOTE: precision is 1 followed by the number of zeros for the desired number of decimial places
+// example: printDouble( 3.1415, 100); // prints 3.14 (two decimal places)
+
+    Serial.print (int(val));  //prints the int part
+    Serial.print("."); // print the decimal point
+    unsigned int frac;
+    if(val >= 0)
+        frac = (val - int(val)) * precision;
+    else
+        frac = (int(val)- val ) * precision;
+    Serial.println(frac,DEC) ;
+} 
 
 //
 // Main Program
@@ -56,6 +97,11 @@ void setup ()
    magno.writeReg (HMC5883L::CONFIG_REGA, HMC5883L::SAMPLES_AVG_1 |
                                           HMC5883L::DOR_75_HZ);
    magno.writeReg (HMC5883L::MODE_REG, HMC5883L::CONTINUOUS_MODE);
+   
+   // Initalize barTemp for async mode
+   g_barTemp.initAsync (EOC_PIN, bmp085EOCISR); 
+   g_barTemp.registerTemperatureCallback (bmp085TempCallback);
+   g_barTemp.registerPressureCallback (bmp085PressureCallback);
 }
 
 void loop ()
@@ -70,20 +116,25 @@ void loop ()
   {
     digitalWrite (LED, LOW);
     led_val = LOW;
-  }
-  
-  // Update barometer/thermometer
-  temp = barTemp.readRawTempSync ();
-  pressure = barTemp.readRawPressureSync (BMP085::OSSR_STANDARD);
+  };
   
   // Print barometer and thermometer data
   Serial.println ("Barometer and Thermometer:");
   Serial.print ("RawTemp=");
-  Serial.println (temp, DEC);
+  Serial.println (g_bmp085RawTemp, DEC);
+  Serial.print ("TempC=");
+  printDouble (g_bmp085TempC, 10);
+  Serial.print ("TempF=");
+  printDouble (g_bmp085TempF, 10);
   Serial.print ("RawPressure=");
-  Serial.println (pressure, DEC);
+  Serial.println (g_bmp085RawPressure, DEC);
+  Serial.print ("PressurehPa=");
+  printDouble (g_bmp085PressurehPa, 100);
+  Serial.print ("AltitudeM=");
+  printDouble (g_bmp085AltitudeM, 100);
+  Serial.println ("");
   
-  uint8_t val = 0;
+  /*uint8_t val = 0;
 
   // Update gyro data
   bool gyroOverrun = false;
@@ -156,5 +207,7 @@ void loop ()
   Serial.println (rawMagno.y, DEC);
   Serial.print ("RawZ=");
   Serial.println (rawMagno.z, DEC);
-  Serial.println ("");
+  Serial.println ("");*/
+  
+  delay (10);
 }

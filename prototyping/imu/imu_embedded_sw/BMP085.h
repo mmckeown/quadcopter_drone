@@ -12,10 +12,49 @@
 class BMP085
 {
  public:
+  // Oversampling setting enum
+  typedef enum OSSR_SETTING_ENUM
+  {
+    OSSR_LOW_POWER = 0,
+    OSSR_STANDARD,
+    OSSR_HIGH_RES,
+    OSSR_ULTRA_HIGH_RES,
+    OSSR_NUM
+  } OSSR_SETTING;
+  
+  // Callback typdefs
+  typedef void (*TemperatureCallback)(int16_t _rawTemp, double _tempC, double _tempF);
+  typedef void (*PressureCallback) (int32_t _rawPressure, double _pressurehPa, double _altitude);
+  
+  // ISRs
+  typedef void (*ISRFunc) (); // should just call BMP085::eocISR
+  
+  BMP085 ();
+  ~BMP085 ();
+  
+  // Register callbacks
+  void registerTemperatureCallback (TemperatureCallback _cb);
+  void registerPressureCallback (PressureCallback _cb);
+  
+  // Initialize
+  void init ();
+  
+  // Initialize for asynchronous reading style
+  void initAsync (int _eocPin, ISRFunc _eocIsr);
+  // ISR functions
+  void eocISR ();
+  // Set and get functions for OSSR setting for async mode
+  OSSR_SETTING getAsyncOSSR () {return m_ossrAsync;}
+  void setAsyncOSSR (OSSR_SETTING _ossr) {m_ossrAsync = _ossr;} 
+  
+  // Synchronous poll reads
+  int16_t readRawTempSync ();
+  int32_t readRawPressureSync (OSSR_SETTING _ossr);
+ private:
   // Device parameters
   static const uint8_t ADDRESS        = 0x77;
   static const uint8_t REG_WIDTH      = 1;
- 
+   
   // Device registers
   static const uint8_t AC1_MSB_REG    = 0xAA;
   static const uint8_t AC1_LSB_REG    = 0xAB;
@@ -50,22 +89,65 @@ class BMP085
   static const uint8_t VALUE_MSB_REG  = 0xF6;
   static const uint8_t VALUE_LSB_REG  = 0xF7;
   static const uint8_t VALUE_XLSB_REG = 0xF8;
+ 
+  // Random constants for calculations (from datasheet)
+  static const int32_t TWO_EXP_TWO       = 4;
+  static const int32_t TWO_EXP_FOUR      = 16;
+  static const int32_t TWO_EXP_EIGHT     = 256;
+  static const int32_t TWO_EXP_ELEVEN    = 2048;
+  static const int32_t TWO_EXP_TWELVE    = 4096;
+  static const int32_t TWO_EXP_THIRTEEN  = 8192;
+  static const int32_t TWO_EXP_FIFTEEN   = 32768;
+  static const int32_t TWO_EXP_SIXTEEN   = 65536;
+ 
+  // Pressure at sea level
+  static const double PRESSURE_SEA_LEVEL_HPA;
+ 
+  // Array to convert oversampling setting to conversion time
+  static const double  OSSR_CONVERSION_TIME[OSSR_NUM];
   
-  // Oversampling setting
-  static const uint8_t OSSR_LOW_POWER = 0x00;
-  static const uint8_t OSSR_STANDARD  = 0x01;
-  static const uint8_t OSSR_HIGH_RES  = 0x02;
-  static const uint8_t OSSR_UHIGH_RES = 0x03;
+  typedef enum ASYNC_STATE_ENUM
+  {
+    WAIT_TEMP_CONVERSION = 0,
+    WAIT_PRESSURE_CONVERSION,
+    ASYNC_STATE_NUM
+  } ASYNC_STATE;
   
-  BMP085 ();
-  ~BMP085 ();
+  // Whether device parameters are initialized
+  bool                 m_initialized;
   
-  int16_t readRawTempSync ();
-  int32_t readRawPressureSync (uint8_t oss);
- private:
+  // Device parameters read from EEPROM
+  int16_t              m_AC1;
+  int16_t              m_AC2;
+  int16_t              m_AC3;
+  uint16_t             m_AC4;
+  uint16_t             m_AC5;
+  uint16_t             m_AC6;
+  int16_t              m_B1;
+  int16_t              m_B2;
+  int16_t              m_MB;
+  int16_t              m_MC;
+  int16_t              m_MD;
+  
+  // State for asynchronous state machine
+  ASYNC_STATE          m_state;
+  
+  // Whether we are in async mode
+  bool                 m_async;
+  
+  // OSSR setting for async
+  OSSR_SETTING         m_ossrAsync;
+  
+  // Saved temp value across interrupts for async
+  int16_t              m_rawTempAsync;
+ 
+  // Calbacks for asynchronous operation
+  TemperatureCallback  m_tempCB;
+  PressureCallback     m_pressureCB;
+  
+  // Private helper functions
   uint8_t readReg (const uint8_t _reg);
   void writeReg (const uint8_t _reg, const uint8_t _val);
- 
 };
 
 #endif
