@@ -31,6 +31,8 @@ int32_t    g_bmp085RawPressure = 0.0;
 double     g_bmp085PressurehPa = 0.0;
 double     g_bmp085AltitudeM = 0.0;
 double     g_bmp085AltitudeF = 0.0;
+double     g_bmp085VerticalSpeedMpS = 0.0;
+double     g_bmp085VerticalSpeedFpS = 0.0;
 
 // ISRs
 void bmp085EOCISR ()
@@ -55,6 +57,12 @@ void bmp085AltitudeCallback (double _altitudeM, double _altitudeF)
 {
   g_bmp085AltitudeM = _altitudeM;
   g_bmp085AltitudeF = _altitudeF;
+}
+
+void bmp085VerticalSpeedCallback (double _verticalSpeedMpS, double _verticalSpeedFpS)
+{
+  g_bmp085VerticalSpeedMpS = _verticalSpeedMpS;
+  g_bmp085VerticalSpeedFpS = _verticalSpeedFpS;
 }
 
 // Helper functions
@@ -108,6 +116,7 @@ void setup ()
    g_barTemp.registerTemperatureCallback (bmp085TempCallback);
    g_barTemp.registerPressureCallback (bmp085PressureCallback);
    g_barTemp.registerAltitudeCallback (bmp085AltitudeCallback);
+   g_barTemp.registerVerticalSpeedCallback (bmp085VerticalSpeedCallback);
    g_barTemp.setAsyncOSSR (BMP085::OSSR_ULTRA_HIGH_RES);
    g_barTemp.setAvgFilter (true);
    g_barTemp.initAsync (EOC_PIN, bmp085EOCISR); 
@@ -143,6 +152,10 @@ void loop ()
   printDouble (g_bmp085AltitudeM, 100);
   Serial.print ("AltitudeF=");
   printDouble (g_bmp085AltitudeF, 100);
+  Serial.print ("VerticalSpeedMpS=");
+  printDouble (g_bmp085VerticalSpeedMpS, 100);
+  Serial.print ("VerticalSpeedFpS=");
+  printDouble (g_bmp085VerticalSpeedFpS, 100);
   Serial.println ("");
   
   /*uint8_t val = 0;

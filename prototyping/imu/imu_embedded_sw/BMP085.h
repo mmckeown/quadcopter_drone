@@ -26,6 +26,7 @@ class BMP085
   typedef void (*TemperatureCallback)(int16_t _rawTemp, double _tempC, double _tempF);
   typedef void (*PressureCallback) (int32_t _rawPressure, double _pressurehPa);
   typedef void (*AltitudeCallback) (double _altitudeM, double _altitudeF);
+  typedef void (*VerticalSpeedCallback) (double _verticalSpeedMpS, double _verticalSpeedFpS);
   
   // ISRs
   typedef void (*ISRFunc) (); // should just call BMP085::eocISR
@@ -37,7 +38,7 @@ class BMP085
   void registerTemperatureCallback (TemperatureCallback _cb);
   void registerPressureCallback (PressureCallback _cb);
   void registerAltitudeCallback (AltitudeCallback _cb);
-  // TODO: Vertical speed????
+  void registerVerticalSpeedCallback (VerticalSpeedCallback _cb);
   
   // Initialize
   void init ();
@@ -105,6 +106,9 @@ class BMP085
   // Moving average filter
   static const int32_t COEFZ = 21;
   
+  // Vertical speed sample difference
+  static const uint32_t VERTICAL_SPEED_SAMPLE_DIFFERENCE = 1;
+  
   typedef enum ASYNC_STATE_ENUM
   {
     WAIT_TEMP_CONVERSION = 0,
@@ -143,11 +147,17 @@ class BMP085
   // Moving average filter
   bool                 m_avgFilter;
   int32_t              m_k[COEFZ];
+  
+  // Vertical speed measurement variables
+  uint32_t             m_verticalSpeedSamplesCount;
+  double               m_lastAltitudeM;
+  uint32_t             m_lastAltitudeTimemS;
  
   // Calbacks for asynchronous operation
-  TemperatureCallback  m_tempCB;
-  PressureCallback     m_pressureCB;
-  AltitudeCallback     m_altitudeCB;
+  TemperatureCallback    m_tempCB;
+  PressureCallback       m_pressureCB;
+  AltitudeCallback       m_altitudeCB;
+  VerticalSpeedCallback  m_verticalSpeedCB;
   
   // Private helper functions
   uint8_t readReg (const uint8_t _reg);

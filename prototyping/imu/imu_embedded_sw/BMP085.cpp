@@ -27,9 +27,13 @@ BMP085::BMP085 ()
     m_ossrAsync (OSSR_STANDARD),
     m_rawTempAsync (0),
     m_avgFilter (false),
+    m_verticalSpeedSamplesCount (0),
+    m_lastAltitudeM (0.0),
+    m_lastAltitudeTimemS (0),
     m_tempCB (NULL),
     m_pressureCB (NULL),
-    m_altitudeCB (NULL)
+    m_altitudeCB (NULL),
+    m_verticalSpeedCB (NULL)
 {
   for (int32_t i = 0; i < COEFZ; i++)
     m_k[i] = 0;
@@ -52,6 +56,11 @@ void BMP085::registerPressureCallback (PressureCallback _cb)
 void BMP085::registerAltitudeCallback (AltitudeCallback _cb)
 {
   m_altitudeCB = _cb;
+}
+
+void BMP085::registerVerticalSpeedCallback (VerticalSpeedCallback _cb)
+{
+  m_verticalSpeedCB = _cb;
 }
 
 void BMP085::init ()
@@ -127,6 +136,7 @@ void BMP085::eocISR ()
       double tempC = T * 0.1;
       double tempF = (tempC * 9 / 5) + 32;
       
+      // Calculate true pressure
       int32_t B6 = B5 - 4000;
       X1 = (m_B2 * (B6 * B6 >> 12)) >> 11;
       X2 = (m_AC2 * B6) >> 11;
@@ -147,13 +157,18 @@ void BMP085::eocISR ()
       X2 = (-7357 * p) >> 16;
       p = p + ((X1 + X2 + 3791) >> 4);
       
+      // Apply average filter if needed
       if (m_avgFilter)
         p = moveAvgIntZ (p);
       
+      // Convert from Pa to hPa
       double pressurehPa = ((double) p) / 100.0;
       
+      // Calculate altitude
       double altitudeM = 44330.0 * (1.0 - pow (pressurehPa / PRESSURE_SEA_LEVEL_HPA, 1 / 5.255)); 
       double altitudeF = altitudeM * 3.2808;
+      
+      
       
       // Make callbacks
       if (m_tempCB)
@@ -162,6 +177,26 @@ void BMP085::eocISR ()
         m_pressureCB (pressure, pressurehPa);
       if (m_altitudeCB)
         m_altitudeCB (altitudeM, altitudeF);
+      if (m_verticalSpeedCB && m_verticalSpeedSamplesCount == 0)
+      {
+        // Calculate vertical speed
+        double altDiffM = altitudeM - m_lastAltitudeM;
+        uint32_t currentTimemS = millis ();
+        uint32_t timeDiffmS = currentTimemS - m_lastAltitudeTimemS;
+        double verticalSpeedMpS = altDiffM / (((double) timeDiffmS) / 1000.0);
+        double verticalSpeedFpS = verticalSpeedMpS * 3.2808;
+      
+        // Update values
+        m_verticalSpeedSamplesCount = VERTICAL_SPEED_SAMPLE_DIFFERENCE;
+        m_lastAltitudeM = altitudeM;
+        m_lastAltitudeTimemS = currentTimemS;
+        
+        // Make callback
+        m_verticalSpeedCB (verticalSpeedMpS, verticalSpeedFpS);
+      }
+      else if (m_verticalSpeedCB)
+        m_verticalSpeedSamplesCount--;
+        
       
       // start another temperature reading
       writeReg (CTRL_REG, TEMPERATURE);
