@@ -99,9 +99,11 @@ void setup ()
    magno.writeReg (HMC5883L::MODE_REG, HMC5883L::CONTINUOUS_MODE);
    
    // Initalize barTemp for async mode
-   g_barTemp.initAsync (EOC_PIN, bmp085EOCISR); 
    g_barTemp.registerTemperatureCallback (bmp085TempCallback);
    g_barTemp.registerPressureCallback (bmp085PressureCallback);
+   g_barTemp.setAsyncOSSR (BMP085::OSSR_ULTRA_HIGH_RES);
+   g_barTemp.setAvgFilter (true);
+   g_barTemp.initAsync (EOC_PIN, bmp085EOCISR); 
 }
 
 void loop ()

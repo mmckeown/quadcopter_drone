@@ -45,7 +45,10 @@ class BMP085
   void eocISR ();
   // Set and get functions for OSSR setting for async mode
   OSSR_SETTING getAsyncOSSR () {return m_ossrAsync;}
-  void setAsyncOSSR (OSSR_SETTING _ossr) {m_ossrAsync = _ossr;} 
+  void setAsyncOSSR (OSSR_SETTING _ossr) {m_ossrAsync = _ossr;}
+  // Use moving average filter in async mode
+  bool getAvgFilter () {return m_avgFilter;}
+  void setAvgFilter (bool _filter) {m_avgFilter = _filter;}
   
   // Synchronous poll reads
   int16_t readRawTempSync ();
@@ -90,21 +93,14 @@ class BMP085
   static const uint8_t VALUE_LSB_REG  = 0xF7;
   static const uint8_t VALUE_XLSB_REG = 0xF8;
  
-  // Random constants for calculations (from datasheet)
-  static const int32_t TWO_EXP_TWO       = 4;
-  static const int32_t TWO_EXP_FOUR      = 16;
-  static const int32_t TWO_EXP_EIGHT     = 256;
-  static const int32_t TWO_EXP_ELEVEN    = 2048;
-  static const int32_t TWO_EXP_TWELVE    = 4096;
-  static const int32_t TWO_EXP_THIRTEEN  = 8192;
-  static const int32_t TWO_EXP_FIFTEEN   = 32768;
-  static const int32_t TWO_EXP_SIXTEEN   = 65536;
- 
   // Pressure at sea level
   static const double PRESSURE_SEA_LEVEL_HPA;
  
   // Array to convert oversampling setting to conversion time
   static const double  OSSR_CONVERSION_TIME[OSSR_NUM];
+  
+  // Moving average filter
+  static const int32_t COEFZ = 21;
   
   typedef enum ASYNC_STATE_ENUM
   {
@@ -140,6 +136,10 @@ class BMP085
   
   // Saved temp value across interrupts for async
   int16_t              m_rawTempAsync;
+  
+  // Moving average filter
+  bool                 m_avgFilter;
+  int32_t              m_k[COEFZ];
  
   // Calbacks for asynchronous operation
   TemperatureCallback  m_tempCB;
@@ -148,6 +148,7 @@ class BMP085
   // Private helper functions
   uint8_t readReg (const uint8_t _reg);
   void writeReg (const uint8_t _reg, const uint8_t _val);
+  int32_t moveAvgIntZ (int32_t _input);
 };
 
 #endif

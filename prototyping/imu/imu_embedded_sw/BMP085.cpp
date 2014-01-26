@@ -26,9 +26,12 @@ BMP085::BMP085 ()
     m_async (false),
     m_ossrAsync (OSSR_STANDARD),
     m_rawTempAsync (0),
+    m_avgFilter (false),
     m_tempCB (NULL),
     m_pressureCB (NULL)
 {
+  for (int32_t i = 0; i < COEFZ; i++)
+    m_k[i] = 0;
 }
 
 BMP085::~BMP085 ()
@@ -89,6 +92,78 @@ void BMP085::initAsync (int _eocPin, ISRFunc _eocIsr)
   writeReg (CTRL_REG, TEMPERATURE);
 }
 
+void BMP085::eocISR ()
+{
+  switch (m_state)
+  {
+    case WAIT_TEMP_CONVERSION:
+    {
+      // Read temperature
+      m_rawTempAsync = ((readReg (VALUE_MSB_REG) << 8) | readReg (VALUE_LSB_REG));
+      
+      // Start a pressure reading
+      writeReg (CTRL_REG, PRESSURE_OSRS0 | (m_ossrAsync << 6));
+      
+      // Transition to waiting for pressure conversion state
+      m_state = WAIT_PRESSURE_CONVERSION;
+      break;
+    }
+    case WAIT_PRESSURE_CONVERSION:
+    {
+      // Read pressure
+      int32_t pressure = (((readReg (VALUE_MSB_REG) << 16) | (readReg (VALUE_LSB_REG) << 8) | readReg (VALUE_XLSB_REG)) >> (8 - m_ossrAsync));
+      
+      // Calculate true temperature
+      int32_t X1 = (((int32_t) m_rawTempAsync - (int32_t) m_AC6) * (int32_t) m_AC5) >> 15;
+      int32_t X2 = ((int32_t) m_MC << 11) / (X1 + m_MD);
+      int32_t B5 = X1 + X2;
+      int32_t T = (B5 + 8) >> 4;
+      double tempC = T * 0.1;
+      double tempF = (tempC * 9 / 5) + 32;
+      
+      int32_t B6 = B5 - 4000;
+      X1 = (m_B2 * (B6 * B6 >> 12)) >> 11;
+      X2 = (m_AC2 * B6) >> 11;
+      int32_t X3 = X1 + X2;
+      int32_t B3 = (((((int32_t) m_AC1) * 4 + X3) << m_ossrAsync) + 2) >> 2;
+      X1 = (m_AC3 * B6) >> 13;
+      X2 = (m_B1 * ((B6 * B6) >> 12)) >> 16;
+      X3 = ((X1 + X2) + 2) >> 2;
+      uint32_t B4 = (m_AC4 * (uint32_t)(X3 + 32768)) >> 15;
+      uint32_t B7 = ((uint32_t)(pressure - B3) * (50000 >> m_ossrAsync));
+      int32_t p;
+      if (B7 < 0x80000000)
+        p = (B7 << 1) / B4;
+      else
+        p = (B7 / B4) << 1;
+      X1 = (p >> 8) * (p >> 8);
+      X1 = (X1 * 3038) >> 16;
+      X2 = (-7357 * p) >> 16;
+      p = p + ((X1 + X2 + 3791) >> 4);
+      
+      if (m_avgFilter)
+        p = moveAvgIntZ (p);
+      
+      double pressurehPa = ((double) p) / 100.0;
+      
+      double altitudeM = 44330.0 * (1.0 - pow (pressurehPa / PRESSURE_SEA_LEVEL_HPA, 1 / 5.255)); 
+      
+      // Make callbacks
+      if (m_tempCB)
+        m_tempCB (m_rawTempAsync, tempC, tempF);
+      if (m_pressureCB)
+        m_pressureCB (pressure, pressurehPa, altitudeM);
+      
+      // start another temperature reading
+      writeReg (CTRL_REG, TEMPERATURE);
+      
+      // Transition back to waiting for temperature conversion
+      m_state = WAIT_TEMP_CONVERSION;
+      break;
+    }
+  }
+}
+
 int16_t BMP085::readRawTempSync ()
 {
   if (m_async)
@@ -139,71 +214,17 @@ void BMP085::writeReg (const uint8_t _reg, const uint8_t _val)
   Wire.endTransmission ();
 }
 
-void BMP085::eocISR ()
+int32_t BMP085::moveAvgIntZ (int32_t _input)
 {
-  switch (m_state)
-  {
-    case WAIT_TEMP_CONVERSION:
-    {
-      // Read temperature
-      m_rawTempAsync = ((readReg (VALUE_MSB_REG) << 8) | readReg (VALUE_LSB_REG));
-      
-      // Start a pressure reading
-      writeReg (CTRL_REG, PRESSURE_OSRS0 | (m_ossrAsync << 6));
-      
-      // Transition to waiting for pressure conversion state
-      m_state = WAIT_PRESSURE_CONVERSION;
-      break;
-    }
-    case WAIT_PRESSURE_CONVERSION:
-    {
-      // Read pressure
-      int32_t pressure = (((readReg (VALUE_MSB_REG) << 16) | (readReg (VALUE_LSB_REG) << 8) | readReg (VALUE_XLSB_REG)) >> (8 - m_ossrAsync));
-      
-      // Calculate true temperature
-      int32_t X1 = (m_rawTempAsync - m_AC6) * m_AC5 / TWO_EXP_FIFTEEN;
-      int32_t X2 = m_MC * TWO_EXP_ELEVEN / (X1 + m_MD);
-      int32_t B5 = X1 + X2;
-      int32_t T = (B5 + 8) / TWO_EXP_FOUR;
-      double tempC = T * 0.1;
-      double tempF = (tempC * 9 / 5) + 32;
-      
-      int32_t B6 = B5 - 4000;
-      X1 = (m_B2 * (B6 * B6 / TWO_EXP_TWELVE)) / TWO_EXP_ELEVEN;
-      X2 = m_AC2 * B6 / TWO_EXP_ELEVEN;
-      int32_t X3 = X1 + X2;
-      int32_t B3 = ((m_AC1 * 4 + X3) << m_ossrAsync + 2) / 4;
-      X1 = m_AC3 * B6 / TWO_EXP_THIRTEEN;
-      X2 = (m_B1 * (B6 * B6 / TWO_EXP_TWELVE)) / TWO_EXP_SIXTEEN;
-      X3 = ((X1 + X2) + 2) / TWO_EXP_TWO;
-      uint32_t B4 = m_AC4 * (uint32_t)(X3 + 32768) / TWO_EXP_FIFTEEN;
-      uint32_t B7 = ((uint32_t)pressure - B3) * (50000 >> m_ossrAsync);
-      int32_t p;
-      if (B7 < 0x80000000)
-        p = (B7 * 2) / B4;
-      else
-        p = (B7 / B4) * 2;
-      X1 = (p / TWO_EXP_EIGHT) * (p / TWO_EXP_EIGHT);
-      X1 = (X1 * 3038) / TWO_EXP_SIXTEEN;
-      X2 = (-7357 * p) / TWO_EXP_SIXTEEN;
-      p = p + (X1 + X2 + 3791) / TWO_EXP_FOUR;
-      
-      double pressurehPa = ((double) p) / 100.0;
-      
-      double altitudeM = 44330.0 * (1.0 - pow (pressurehPa / PRESSURE_SEA_LEVEL_HPA, 1 / 5.255)); 
-      
-      // Make callbacks
-      if (m_tempCB)
-        m_tempCB (m_rawTempAsync, tempC, tempF);
-      if (m_pressureCB)
-        m_pressureCB (pressure, pressurehPa, altitudeM);
-      
-      // start another temperature reading
-      writeReg (CTRL_REG, TEMPERATURE);
-      
-      // Transition back to waiting for temperature conversion
-      m_state = WAIT_TEMP_CONVERSION;
-      break;
-    }
-  }
+  int32_t cum = 0;
+  
+  for (int32_t i = 0; i < COEFZ; i++)
+    m_k[i] = m_k[i + 1];
+    
+  m_k[COEFZ - 1] = _input;
+  
+  for (int32_t i = 0; i < COEFZ; i++)
+    cum += m_k[i];
+    
+  return (cum / COEFZ);
 }
