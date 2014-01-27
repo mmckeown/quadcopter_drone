@@ -127,7 +127,9 @@ void setup ()
    g_acc.setRange (ADXL345::RANGE_4G);
    g_acc.setFullRes (true);
    g_acc.setLPFilter (true);
-   g_acc.initAsync (INT1_PIN, adxl345Int1ISR);   
+   g_acc.init ();
+   g_acc.calibrateOffset ();
+   g_acc.initAsync (INT1_PIN, adxl345Int1ISR);  
                                           
    // Configure magnometer
    //magno.writeReg (HMC5883L::CONFIG_REGA, HMC5883L::SAMPLES_AVG_1 |

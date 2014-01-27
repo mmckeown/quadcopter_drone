@@ -6,8 +6,9 @@
  
 #include "ADXL345.h"
 
-const double ADXL345::FULL_RES_RESOLUTION = 3.90625;
+const double ADXL345::FULL_RES_RESOLUTION = 3.90625; // mg/LSB
 const double ADXL345::LP_FILTER_ALPHA = 0.5;
+const double ADXL345::OFFSET_REGS_SCALE = 1 / 15.6;  // LSB/mg
 
 ADXL345::ADXL345 ()
   : m_initialized (false),
@@ -15,13 +16,18 @@ ADXL345::ADXL345 ()
     m_fullResSetting (false),
     m_resolution (3.90625),
     m_lpFilter (false),
+    m_calibrationVectorInit (false),
     m_accCB (NULL),
     m_prCB (NULL),
     m_ovrnCB (NULL)
 {
-  m_lpFilterPrev.x = 0;
-  m_lpFilterPrev.y = 0;
-  m_lpFilterPrev.z = 0;
+  m_lpFilterPrev.x = 0.0;
+  m_lpFilterPrev.y = 0.0;
+  m_lpFilterPrev.z = 0.0;
+  
+  m_calibrationDataRaw.x = 0;
+  m_calibrationDataRaw.y = 0;
+  m_calibrationDataRaw.z = 0;
 }
 
 ADXL345::~ADXL345 ()
@@ -58,6 +64,7 @@ void ADXL345::initAsync (int _int1Pin, ISRFunc _int1ISR)
 { 
   // Disable all interrupts and enter standby mode
   writeReg (POWER_CTRL_REG, 0);
+  m_initialized = false;
   writeReg (INT_ENABLE_REG, 0);
   
   // Setup hardware interrupt
@@ -70,6 +77,56 @@ void ADXL345::initAsync (int _int1Pin, ISRFunc _int1ISR)
   
   // Do normal initialization
   init ();
+}
+
+void ADXL345::calibrateOffset ()
+{
+  if (!m_initialized)
+    return;
+  
+  if (!m_calibrationVectorInit)
+  {
+    // Clear offset values so we don't double up on calibration
+    writeReg (X_OFFSET_REG, 0);
+    writeReg (Y_OFFSET_REG, 0);
+    writeReg (Z_OFFSET_REG, 0);
+    
+    vectord cum;
+    cum.x = 0;
+    cum.y = 0;
+    cum.z = 0;
+    for (int32_t i = 0; i < CALIBRATION_SAMPLES; i++)
+    {
+      // Wait for data to be ready
+      bool drdy = false;
+      bool ovrn;
+      while (!drdy)
+        dataReady (drdy, ovrn);
+        
+      // Read data
+      vector16b rawData = readRaw ();
+      cum.x += rawData.x;
+      cum.y += rawData.y;
+      cum.z += rawData.z;
+    }
+    
+    m_calibrationDataRaw.x = -((int32_t) cum.x) / CALIBRATION_SAMPLES;
+    m_calibrationDataRaw.y = -((int32_t) cum.y) / CALIBRATION_SAMPLES;
+    m_calibrationDataRaw.z = -((int32_t) cum.z) / CALIBRATION_SAMPLES;
+    
+    m_calibrationVectorInit = true;
+  }
+ 
+  // Convert resolution
+  vector16b offsetValues;
+  offsetValues.x = (int16_t) round(((double) m_calibrationDataRaw.x) * m_resolution * OFFSET_REGS_SCALE);
+  offsetValues.y = (int16_t) round(((double) m_calibrationDataRaw.y) * m_resolution * OFFSET_REGS_SCALE);
+  offsetValues.z = (int16_t) round((((double) m_calibrationDataRaw.z) * m_resolution * OFFSET_REGS_SCALE) + (OFFSET_REGS_SCALE * 1000.0));
+  
+  // Write calibration data
+  writeReg (X_OFFSET_REG, offsetValues.x);
+  writeReg (Y_OFFSET_REG, offsetValues.y);
+  writeReg (Z_OFFSET_REG, offsetValues.z);
 }
 
 void ADXL345::int1ISR ()
@@ -134,6 +191,9 @@ void ADXL345::setRange (RANGE_SETTING _range)
   
   // Update the resolution
   updateResolution ();
+  
+  // Recalculate calibration offsets
+  calibrateOffset ();
 }
 
 void ADXL345::setFullRes (bool _fullRes)
@@ -155,6 +215,9 @@ void ADXL345::setFullRes (bool _fullRes)
   
   // Update the resolution
   updateResolution ();
+  
+  // Recalculate calibration offsets
+  calibrateOffset ();
 }
 
 void ADXL345::dataReady (bool &_drdy, bool &_ovrn)

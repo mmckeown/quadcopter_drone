@@ -57,6 +57,8 @@ class ADXL345
   // Asynchrnous initialization
   void initAsync (int _int1Pin, ISRFunc _int1ISR);
   
+  void calibrateOffset ();
+  
   // ISR function
   void int1ISR ();
   
@@ -196,6 +198,12 @@ class ADXL345
   // LP Filter smoothing factor
   static const double LP_FILTER_ALPHA;
   
+  // Calibration samples
+  static const int32_t CALIBRATION_SAMPLES = 50;
+  
+  // Scale factor of offset registers (LSB/mg)
+  static const double OFFSET_REGS_SCALE;
+  
   // Initialized
   bool                 m_initialized;
   
@@ -210,6 +218,12 @@ class ADXL345
   bool                 m_lpFilter;
   vectord              m_lpFilterPrev;
   
+  
+  // Calibration vector (x0g, y0g, z1g) in raw unit
+  vector16b            m_calibrationDataRaw;
+  // Calibration vector initialized
+  bool                 m_calibrationVectorInit;
+
   // Callbacks
   AccelerationCallback m_accCB;
   PitchRollCallback    m_prCB;
