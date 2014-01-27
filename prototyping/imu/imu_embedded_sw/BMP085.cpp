@@ -97,9 +97,6 @@ void BMP085::initAsync (int _eocPin, ISRFunc _eocIsr)
   pinMode (_eocPin, INPUT);
   attachInterrupt (_eocPin, _eocIsr, RISING);
   
-  // Enable interrupts
-  interrupts ();
-  
   // Set the initial state
   m_state = WAIT_TEMP_CONVERSION;
   

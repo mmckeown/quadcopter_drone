@@ -12,6 +12,68 @@
 class ADXL345
 {
  public:
+  typedef enum RANGE_SETTING_ENUM
+  {
+    RANGE_2G = 0,
+    RANGE_4G,
+    RANGE_8G,
+    RANGE_16G,
+    RANGE_NUM
+  } RANGE_SETTING;
+ 
+  // Vector structs
+  typedef struct vectord_struct
+  {
+      double  x; 
+      double  y;
+      double  z;
+  } vectord;
+  typedef struct vector16b_struct
+  {
+      int16_t x;
+      int16_t y;
+      int16_t z;
+  } vector16b;
+  
+  // Callback definitions
+  typedef void (*AccelerationCallback) (vector16b _rawAcc, vectord _accmG);
+  typedef void (*PitchRollCallback) (double _pitch, double _roll);
+  typedef void (*OverrunCallback) (); 
+  
+  // ISRs
+  typedef void (*ISRFunc) (); // should just call ADXL345::int1ISR
+
+  ADXL345 ();
+  ~ADXL345 ();
+  
+  // Register callbacks
+  void registerAccelerationCallback (AccelerationCallback _cb);
+  void registerPitchRollCallback (PitchRollCallback _cb);
+  void registerOverrunCallback (OverrunCallback _cb);
+  
+  // Initialize
+  void init ();
+  
+  // Asynchrnous initialization
+  void initAsync (int _int1Pin, ISRFunc _int1ISR);
+  
+  // ISR function
+  void int1ISR ();
+  
+  // Range and resolution settings 
+  void setRange (RANGE_SETTING _range);
+  RANGE_SETTING getRange () {return m_rangeSetting;}
+  void setFullRes (bool _fullRes);
+  bool getFullRes () {return m_fullResSetting;}
+  
+  // LP filter async data
+  void setLPFilter (bool _filter) {m_lpFilter = _filter;}
+  bool getLPFilter () {return m_lpFilter;}
+  
+  // Read accelerometer data
+  void dataReady (bool &_drdy, bool &_ovrn);
+  vector16b readRaw ();
+ private:
   // Device parameters
   static const uint8_t ADDRESS             = 0x53;
   static const uint8_t REG_WIDTH           = 1;
@@ -103,16 +165,13 @@ class ADXL345
   static const uint8_t FREE_FALL_MASK      = 0x04;
   static const uint8_t WATERMARK_MASK      = 0x02;
   static const uint8_t OVERRUN_MASK        = 0x01;
- 
+
   static const uint8_t DATA_FORMAT_REG     = 0x31; 
   static const uint8_t SELF_TEST_ENABLE    = 0x80;
   static const uint8_t SPI_3WIRE_ENABLE    = 0x40;
   static const uint8_t INT_ACTIVE_LOW      = 0x20;
-  static const uint8_t FULL_RES_DISABLE    = 0x08;
+  static const uint8_t FULL_RES_ENABLE     = 0x08;
   static const uint8_t LEFT_JUSTIFY_ENABLE = 0x04;
-  static const uint8_t RANGE_4g            = 0x01;
-  static const uint8_t RANGE_8g            = 0x02;
-  static const uint8_t RANGE_16g           = 0x03;
 
   static const uint8_t DATAX0_REG          = 0x32;
   static const uint8_t DATAX1_REG          = 0x33;
@@ -130,31 +189,36 @@ class ADXL345
   static const uint8_t FIFO_STATUS_REG     = 0x39; 
   static const uint8_t FIFO_TRIG_MASK      = 0x80;
   static const uint8_t FIFO_ENTRIES_MASK   = 0x3F;
+ 
+  // Bit resolution for different range settings in full res mode
+  static const double FULL_RES_RESOLUTION;
   
-  // Vector structs
-  typedef struct vectorf_struct
-  {
-      float   x; 
-      float   y;
-      float   z;
-  } vectorf;
-  typedef struct vector16b_struct
-  {
-      int16_t x;
-      int16_t y;
-      int16_t z;
-  } vector16b;
-
-  ADXL345 ();
-  ~ADXL345 ();
+  // LP Filter smoothing factor
+  static const double LP_FILTER_ALPHA;
   
-  // Read and write regs
+  // Initialized
+  bool                 m_initialized;
+  
+  // The current range setting
+  RANGE_SETTING        m_rangeSetting;
+  bool                 m_fullResSetting;
+  
+  // Current resolution in mg
+  double               m_resolution;
+  
+  // LP filter variables
+  bool                 m_lpFilter;
+  vectord              m_lpFilterPrev;
+  
+  // Callbacks
+  AccelerationCallback m_accCB;
+  PitchRollCallback    m_prCB;
+  OverrunCallback      m_ovrnCB;
+ 
+  // Helper functions
   uint8_t readReg (const uint8_t _reg);
   void writeReg (const uint8_t _reg, const uint8_t _val);
-  
-  // Read accelerometer data
-  vector16b readRaw ();
- private:
+  void updateResolution ();
 };
 
 #endif

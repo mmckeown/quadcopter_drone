@@ -14,8 +14,12 @@ uint8_t tempGyro;
 L3G4200D::vector16b rawGyro;
 
 // Accelerometer
-ADXL345 acc;
-ADXL345::vector16b rawAcc;
+const int INT1_PIN = 11;
+ADXL345            g_acc;
+ADXL345::vector16b g_rawAcc;
+ADXL345::vectord   g_accmG;
+double             g_accPitch = 0.0;
+double             g_accRoll = 0.0;
 
 // Magnometer
 HMC5883L magno;
@@ -35,12 +39,38 @@ double     g_bmp085VerticalSpeedMpS = 0.0;
 double     g_bmp085VerticalSpeedFpS = 0.0;
 
 // ISRs
+void adxl345Int1ISR ()
+{
+  noInterrupts ();
+  g_acc.int1ISR ();
+  interrupts ();
+}
+
 void bmp085EOCISR ()
 {
+  noInterrupts ();
   g_barTemp.eocISR ();
+  interrupts ();
 }
 
 // Callbacks
+void adxl345AccelerationCallback (ADXL345::vector16b _rawAcc, ADXL345::vectord _accmG)
+{
+  g_rawAcc = _rawAcc;
+  g_accmG = _accmG;
+}
+
+void adxl345PitchRollCallback (double _pitch, double _roll)
+{
+  g_accPitch = _pitch;
+  g_accRoll = _roll;
+}
+
+void adxl345OverrunCallback ()
+{
+  Serial.println ("ADXL345 Overrun!");
+}
+
 void bmp085TempCallback (int16_t _rawTemp, double _tempC, double _tempF)
 {
   g_bmp085RawTemp = _rawTemp;
@@ -65,22 +95,6 @@ void bmp085VerticalSpeedCallback (double _verticalSpeedMpS, double _verticalSpee
   g_bmp085VerticalSpeedFpS = _verticalSpeedFpS;
 }
 
-// Helper functions
-void printDouble( double val, unsigned int precision){
-// prints val with number of decimal places determine by precision
-// NOTE: precision is 1 followed by the number of zeros for the desired number of decimial places
-// example: printDouble( 3.1415, 100); // prints 3.14 (two decimal places)
-
-    Serial.print (int(val));  //prints the int part
-    Serial.print("."); // print the decimal point
-    unsigned int frac;
-    if(val >= 0)
-        frac = (val - int(val)) * precision;
-    else
-        frac = (int(val)- val ) * precision;
-    Serial.println(frac,DEC) ;
-} 
-
 //
 // Main Program
 //
@@ -89,28 +103,36 @@ void setup ()
 {
   // Setup LED pin
   pinMode (LED, OUTPUT);
-  digitalWrite (LED, HIGH);
-  led_val = HIGH;
+  digitalWrite (LED, LOW);
+  led_val = LOW;
   
   // Begin com libs
   Wire.begin();
-  Serial.begin(9600);
+  Serial.begin(115200);
+  
+  noInterrupts ();
   
   // Disable gyro power down state
-  gyro.writeReg (L3G4200D::CTRL_REG1, L3G4200D::DR0 | 
-                                      L3G4200D::BW0 |
-                                      L3G4200D::PD_DISABLE |
-                                      L3G4200D::Z_ENABLE |
-                                      L3G4200D::Y_ENABLE |
-                                      L3G4200D::X_ENABLE);
-   // Put accelerometer in measure mode
-   acc.writeReg (ADXL345::POWER_CTRL_REG, ADXL345::MEASURE_ENABLE |
-                                          ADXL345::WAKEUP_8HZ);
+  //gyro.writeReg (L3G4200D::CTRL_REG1, L3G4200D::DR0 | 
+  //                                    L3G4200D::BW0 |
+  //                                    L3G4200D::PD_DISABLE |
+  //                                    L3G4200D::Z_ENABLE |
+  //                                    L3G4200D::Y_ENABLE |
+  //                                    L3G4200D::X_ENABLE);
+   
+   // Initialize accelerometer for async mode
+   g_acc.registerAccelerationCallback (adxl345AccelerationCallback);
+   g_acc.registerPitchRollCallback (adxl345PitchRollCallback);
+   g_acc.registerOverrunCallback (adxl345OverrunCallback);
+   g_acc.setRange (ADXL345::RANGE_4G);
+   g_acc.setFullRes (true);
+   g_acc.setLPFilter (true);
+   g_acc.initAsync (INT1_PIN, adxl345Int1ISR);   
                                           
    // Configure magnometer
-   magno.writeReg (HMC5883L::CONFIG_REGA, HMC5883L::SAMPLES_AVG_1 |
-                                          HMC5883L::DOR_75_HZ);
-   magno.writeReg (HMC5883L::MODE_REG, HMC5883L::CONTINUOUS_MODE);
+   //magno.writeReg (HMC5883L::CONFIG_REGA, HMC5883L::SAMPLES_AVG_1 |
+   //                                       HMC5883L::DOR_75_HZ);
+   //magno.writeReg (HMC5883L::MODE_REG, HMC5883L::CONTINUOUS_MODE);
    
    // Initalize barTemp for async mode
    g_barTemp.registerTemperatureCallback (bmp085TempCallback);
@@ -120,6 +142,8 @@ void setup ()
    g_barTemp.setAsyncOSSR (BMP085::OSSR_ULTRA_HIGH_RES);
    g_barTemp.setAvgFilter (true);
    g_barTemp.initAsync (EOC_PIN, bmp085EOCISR); 
+   
+   interrupts ();
 }
 
 void loop ()
@@ -136,26 +160,46 @@ void loop ()
     led_val = LOW;
   };
   
+    // Print accelerometer data
+  Serial.println ("Accelerometer:");
+  Serial.print ("RawX=");
+  Serial.println (g_rawAcc.x, DEC);
+  Serial.print ("RawY=");
+  Serial.println (g_rawAcc.y, DEC);
+  Serial.print ("RawZ=");
+  Serial.println (g_rawAcc.z, DEC);
+  Serial.print ("AccXmg=");
+  Serial.println (g_accmG.x, DEC);
+  Serial.print ("AccYmg=");
+  Serial.println (g_accmG.y, DEC);
+  Serial.print ("AccZmg=");
+  Serial.println (g_accmG.z, DEC);
+  Serial.print ("Pitch=");
+  Serial.println (g_accPitch, DEC);
+  Serial.print ("Roll=");
+  Serial.println (g_accRoll, DEC);
+  Serial.println ("");
+  
   // Print barometer and thermometer data
   Serial.println ("Barometer and Thermometer:");
   Serial.print ("RawTemp=");
   Serial.println (g_bmp085RawTemp, DEC);
   Serial.print ("TempC=");
-  printDouble (g_bmp085TempC, 10);
+  Serial.println (g_bmp085TempC, DEC);
   Serial.print ("TempF=");
-  printDouble (g_bmp085TempF, 10);
+  Serial.println (g_bmp085TempF, DEC);
   Serial.print ("RawPressure=");
   Serial.println (g_bmp085RawPressure, DEC);
   Serial.print ("PressurehPa=");
-  printDouble (g_bmp085PressurehPa, 100);
+  Serial.println (g_bmp085PressurehPa, DEC);
   Serial.print ("AltitudeM=");
-  printDouble (g_bmp085AltitudeM, 100);
+  Serial.println (g_bmp085AltitudeM, DEC);
   Serial.print ("AltitudeF=");
-  printDouble (g_bmp085AltitudeF, 100);
+  Serial.println (g_bmp085AltitudeF, DEC);
   Serial.print ("VerticalSpeedMpS=");
-  printDouble (g_bmp085VerticalSpeedMpS, 100);
+  Serial.println (g_bmp085VerticalSpeedMpS, DEC);
   Serial.print ("VerticalSpeedFpS=");
-  printDouble (g_bmp085VerticalSpeedFpS, 100);
+  Serial.println (g_bmp085VerticalSpeedFpS, DEC);
   Serial.println ("");
   
   /*uint8_t val = 0;
@@ -188,31 +232,6 @@ void loop ()
   Serial.println (rawGyro.y, DEC);
   Serial.print ("RawZ=");
   Serial.println (rawGyro.z, DEC);
-  Serial.println ("");
-  
-  // Update accelerometer data
-  bool accOverrun = false;
-  val = acc.readReg (ADXL345::INT_SOURCE_REG);
-  if (val & ADXL345::DATA_RDY_MASK)
-  {
-    // Check for overrun
-    if (val & ADXL345::OVERRUN_MASK)
-      accOverrun = true;
-      
-    // Read raw accelerometer data
-    rawAcc = acc.readRaw ();
-  }
-  
-  // Print accelerometer data
-  Serial.println ("Accelerometer:");
-  //if (accOverrun)
-  //  Serial.println ("Overrun!");
-  Serial.print ("RawX=");
-  Serial.println (rawAcc.x, DEC);
-  Serial.print ("RawY=");
-  Serial.println (rawAcc.y, DEC);
-  Serial.print ("RawZ=");
-  Serial.println (rawAcc.z, DEC);
   Serial.println ("");
   
   // Update magnometer data
