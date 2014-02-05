@@ -12,6 +12,50 @@
 class L3G4200D
 {
  public:
+  // Vector structs
+  typedef struct vectord_struct
+  {
+      double   x; 
+      double   y;
+      double   z;
+  } vectord;
+  typedef struct vector16b_struct
+  {
+      int16_t x;
+      int16_t y;
+      int16_t z;
+  } vector16b;
+  
+  // Callback definitions
+  typedef void (*RotationalVelocityCallback) (vector16b _rawRotVel);
+  typedef void (*OverrunCallback) ();
+  
+  
+  // ISRs
+  typedef void (*ISRFunc) (); // should just call L3G4200D::int2ISR
+  
+  L3G4200D ();
+  ~L3G4200D ();
+  
+  // Register callbacks
+  void registerRotationalVelocityCallback (RotationalVelocityCallback _cb);
+  void registerOverrunCallback (OverrunCallback _cb);
+  
+  // Initialize
+  void init ();
+  
+  // Asynchrnous initialization
+  void initAsync (int _int2Pin, ISRFunc _int2ISR);
+  
+  void calibrateZeroRate ();
+  
+  // ISR function
+  void int2ISR ();
+  
+  // Read gyro data
+  void dataReady (bool &_drdy, bool &_ovrn);
+  vector16b readRaw ();
+ private:
   // Device parameters
   static const uint8_t ADDRESS        = 0x69;
   static const uint8_t REG_WIDTH      = 1;
@@ -131,31 +175,27 @@ class L3G4200D
   
   static const uint8_t INT1_DURATION  = 0x38;
   static const uint8_t WAIT_ENABLE    = 0x80;
-
-  // Vector structs
-  typedef struct vectorf_struct
-  {
-      float   x; 
-      float   y;
-      float   z;
-  } vectorf;
-  typedef struct vector16b_struct
-  {
-      int16_t x;
-      int16_t y;
-      int16_t z;
-  } vector16b;
   
-  L3G4200D ();
-  ~L3G4200D ();
+  // Zero rate calibration samples
+  static const int32_t ZERO_RATE_SAMPLES = 100;
+  
+  // Initialized
+  bool                          m_initialized;
+  
+  // Timer for async operation
+  IntervalTimer                 m_timer;
+  
+  // Zero rate offset calibration
+  bool                          m_zeroRateInit;
+  vector16b                     m_zeroRate;
+  
+  // Calbacks for asynchronous operation
+  RotationalVelocityCallback    m_rotVelCB;
+  OverrunCallback               m_ovrnCB;
   
   // Read and write regs
   uint8_t readReg (const uint8_t _reg);
   void writeReg (const uint8_t _reg, const uint8_t _val);
-  
-  // Read gyro data
-  vector16b readRaw ();
- private:
 };
 
 #endif

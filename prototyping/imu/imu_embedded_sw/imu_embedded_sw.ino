@@ -9,9 +9,8 @@ const int LED = 13;
 int led_val = LOW;
 
 // Gyro
-L3G4200D gyro;
-uint8_t tempGyro;
-L3G4200D::vector16b rawGyro;
+L3G4200D             g_gyro;
+L3G4200D::vector16b  g_rawRotVel;
 
 // Accelerometer
 const int INT1_PIN = 11;
@@ -39,21 +38,38 @@ double     g_bmp085VerticalSpeedMpS = 0.0;
 double     g_bmp085VerticalSpeedFpS = 0.0;
 
 // ISRs
+void l3g4200dInt2ISR ()
+{
+  //noInterrupts ();
+  g_gyro.int2ISR ();
+  //interrupts ();
+}
+
 void adxl345Int1ISR ()
 {
-  noInterrupts ();
+  //noInterrupts ();
   g_acc.int1ISR ();
-  interrupts ();
+  //interrupts ();
 }
 
 void bmp085EOCISR ()
 {
-  noInterrupts ();
+  //noInterrupts ();
   g_barTemp.eocISR ();
-  interrupts ();
+  //interrupts ();
 }
 
 // Callbacks
+void l3g4200dRotationalVelocityCallback (L3G4200D::vector16b _rawRotVel)
+{
+  g_rawRotVel = _rawRotVel;
+}
+
+void l3g4200dOverrunCallback ()
+{
+  //Serial.println ("L3G4200D Overrun!");
+}
+
 void adxl345AccelerationCallback (ADXL345::vector16b _rawAcc, ADXL345::vectord _accmG)
 {
   g_rawAcc = _rawAcc;
@@ -112,41 +128,40 @@ void setup ()
   
   noInterrupts ();
   
-  // Disable gyro power down state
-  //gyro.writeReg (L3G4200D::CTRL_REG1, L3G4200D::DR0 | 
-  //                                    L3G4200D::BW0 |
-  //                                    L3G4200D::PD_DISABLE |
-  //                                    L3G4200D::Z_ENABLE |
-  //                                    L3G4200D::Y_ENABLE |
-  //                                    L3G4200D::X_ENABLE);
+  // Initialize gyro for async mode
+  g_gyro.registerRotationalVelocityCallback (l3g4200dRotationalVelocityCallback);
+  g_gyro.registerOverrunCallback (l3g4200dOverrunCallback);
+  g_gyro.init ();
+  g_gyro.calibrateZeroRate ();
+  g_gyro.initAsync (0, l3g4200dInt2ISR);
    
-   // Initialize accelerometer for async mode
-   g_acc.registerAccelerationCallback (adxl345AccelerationCallback);
-   g_acc.registerPitchRollCallback (adxl345PitchRollCallback);
-   g_acc.registerOverrunCallback (adxl345OverrunCallback);
-   g_acc.setRange (ADXL345::RANGE_4G);
-   g_acc.setFullRes (true);
-   g_acc.setLPFilter (true);
-   g_acc.setOutputRate (ADXL345::RATE_100HZ);
-   g_acc.init ();
-   g_acc.calibrateOffset ();
-   g_acc.initAsync (INT1_PIN, adxl345Int1ISR);  
-                                          
-   // Configure magnometer
-   //magno.writeReg (HMC5883L::CONFIG_REGA, HMC5883L::SAMPLES_AVG_1 |
-   //                                       HMC5883L::DOR_75_HZ);
-   //magno.writeReg (HMC5883L::MODE_REG, HMC5883L::CONTINUOUS_MODE);
-   
-   // Initalize barTemp for async mode
-   g_barTemp.registerTemperatureCallback (bmp085TempCallback);
-   g_barTemp.registerPressureCallback (bmp085PressureCallback);
-   g_barTemp.registerAltitudeCallback (bmp085AltitudeCallback);
-   g_barTemp.registerVerticalSpeedCallback (bmp085VerticalSpeedCallback);
-   g_barTemp.setAsyncOSSR (BMP085::OSSR_ULTRA_HIGH_RES);
-   g_barTemp.setAvgFilter (true);
-   g_barTemp.initAsync (EOC_PIN, bmp085EOCISR); 
-   
-   interrupts ();
+  // Initialize accelerometer for async mode
+  g_acc.registerAccelerationCallback (adxl345AccelerationCallback);
+  g_acc.registerPitchRollCallback (adxl345PitchRollCallback);
+  g_acc.registerOverrunCallback (adxl345OverrunCallback);
+  g_acc.setRange (ADXL345::RANGE_4G);
+  g_acc.setFullRes (true);
+  g_acc.setLPFilter (true);
+  g_acc.setOutputRate (ADXL345::RATE_100HZ);
+  g_acc.init ();
+  g_acc.calibrateOffset ();
+  g_acc.initAsync (INT1_PIN, adxl345Int1ISR);  
+                                         
+  // Configure magnometer
+  //magno.writeReg (HMC5883L::CONFIG_REGA, HMC5883L::SAMPLES_AVG_1 |
+  //                                       HMC5883L::DOR_75_HZ);
+  //magno.writeReg (HMC5883L::MODE_REG, HMC5883L::CONTINUOUS_MODE);
+  
+  // Initalize barTemp for async mode
+  g_barTemp.registerTemperatureCallback (bmp085TempCallback);
+  g_barTemp.registerPressureCallback (bmp085PressureCallback);
+  g_barTemp.registerAltitudeCallback (bmp085AltitudeCallback);
+  g_barTemp.registerVerticalSpeedCallback (bmp085VerticalSpeedCallback);
+  g_barTemp.setAsyncOSSR (BMP085::OSSR_ULTRA_HIGH_RES);
+  g_barTemp.setAvgFilter (true);
+  g_barTemp.initAsync (EOC_PIN, bmp085EOCISR);
+  
+  interrupts ();
 }
 
 void loop ()
@@ -163,7 +178,7 @@ void loop ()
     led_val = LOW;
   };
   
-    // Print accelerometer data
+  // Print accelerometer data
   Serial.println ("Accelerometer:");
   Serial.print ("RawX=");
   Serial.println (g_rawAcc.x, DEC);
@@ -204,39 +219,18 @@ void loop ()
   Serial.print ("VerticalSpeedFpS=");
   Serial.println (g_bmp085VerticalSpeedFpS, DEC);
   Serial.println ("");
-  
-  /*uint8_t val = 0;
-
-  // Update gyro data
-  bool gyroOverrun = false;
-  val = gyro.readReg (L3G4200D::STATUS_REG);
-  if (val & L3G4200D::ZYXDA_MASK)
-  {
-    // Check for overrun
-    if (val & L3G4200D::ZYXOR_MASK)
-      gyroOverrun = true;
-    
-    // Read temp
-    tempGyro = gyro.readReg (L3G4200D::OUT_TEMP_REG);
-    
-    // Read raw gyro data
-    rawGyro = gyro.readRaw ();
-  }
-  
+ 
   // Print gyro data
-  Serial.println ("Gyro:");
-  //if (gyroOverrun)
-  //  Serial.println ("Overrun!");
-  Serial.print ("RawTemp=");
-  Serial.println (tempGyro, DEC);
+  Serial.println ("Gyroscope:");
   Serial.print ("RawX=");
-  Serial.println (rawGyro.x, DEC);
+  Serial.println (g_rawRotVel.x, DEC);
   Serial.print ("RawY=");
-  Serial.println (rawGyro.y, DEC);
+  Serial.println (g_rawRotVel.y, DEC);
   Serial.print ("RawZ=");
-  Serial.println (rawGyro.z, DEC);
+  Serial.println (g_rawRotVel.z, DEC);
   Serial.println ("");
   
+  /*
   // Update magnometer data
   //val = acc.readReg (HMC5883L::STATUS_REG);
   //if (val & HMC5883L::RDY_MASK)
@@ -255,5 +249,5 @@ void loop ()
   Serial.println (rawMagno.z, DEC);
   Serial.println ("");*/
   
-  delay (10);
+  delay (100);
 }

@@ -193,7 +193,6 @@ void BMP085::eocISR ()
       }
       else if (m_verticalSpeedCB)
         m_verticalSpeedSamplesCount--;
-        
       
       // start another temperature reading
       writeReg (CTRL_REG, TEMPERATURE);
