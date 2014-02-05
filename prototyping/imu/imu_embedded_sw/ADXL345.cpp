@@ -15,6 +15,7 @@ ADXL345::ADXL345 ()
     m_rangeSetting (RANGE_2G),
     m_fullResSetting (false),
     m_resolution (3.90625),
+    m_outRate (RATE_100HZ),
     m_lpFilter (false),
     m_calibrationVectorInit (false),
     m_accCB (NULL),
@@ -157,19 +158,38 @@ void ADXL345::int1ISR ()
       m_lpFilterPrev.z = accmG.z;
     }
     
-    // Calculate pitch and roll
-    double pitch = (atan2 (accmG.y, sqrt (accmG.x * accmG.x + accmG.z * accmG.z)) * 180.0) / PI;
-    double roll = (atan2 (-accmG.x, accmG.z) * 180.0) / PI;
-    
     // Make callback
     if (m_accCB)
       m_accCB (rawAcc, accmG);
     if (m_prCB)
+    {
+      // Calculate pitch and roll
+      double pitch = (atan2 (accmG.y, sqrt (accmG.x * accmG.x + accmG.z * accmG.z)) * 180.0) / PI;
+      double roll = (atan2 (-accmG.x, accmG.z) * 180.0) / PI;
       m_prCB (pitch, roll);
+    }
   }
   
   if (m_ovrnCB && ovrn)
     m_ovrnCB ();
+}
+
+void ADXL345::setOutputRate (OUTPUT_RATE _rate)
+{
+  // Read the current bw rate reg
+  uint8_t val = readReg (BW_RATE_PWR_REG);
+  
+  // Clear the output rate setting
+  val = val & 0xF0;
+  
+  // Set new output rate
+  val = val | ((uint8_t) _rate);
+  
+  // Write new data format reg value
+  writeReg (BW_RATE_PWR_REG, val);
+
+  // Update member variable  
+  m_outRate = _rate;
 }
 
 void ADXL345::setRange (RANGE_SETTING _range)

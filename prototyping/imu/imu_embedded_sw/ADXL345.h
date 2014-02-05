@@ -20,6 +20,27 @@ class ADXL345
     RANGE_16G,
     RANGE_NUM
   } RANGE_SETTING;
+  
+  typedef enum OUTPUT_RATE_ENUM
+  {
+    RATE_0P10HZ = 0,
+    RATE_OP20HZ,
+    RATE_OP39HZ,
+    RATE_0P78HZ,
+    RATE_1P56HZ,
+    RATE_3P13HZ,
+    RATE_6P25HZ,
+    RATE_12P5HZ,
+    RATE_25HZ,
+    RATE_50HZ,
+    RATE_100HZ,
+    RATE_200HZ,
+    RATE_400HZ,
+    RATE_800HZ,
+    RATE_1600HZ,
+    RATE_3200HZ,
+    RATE_NUM
+  } OUTPUT_RATE;
  
   // Vector structs
   typedef struct vectord_struct
@@ -67,6 +88,10 @@ class ADXL345
   RANGE_SETTING getRange () {return m_rangeSetting;}
   void setFullRes (bool _fullRes);
   bool getFullRes () {return m_fullResSetting;}
+  
+  // Output rate settings
+  void setOutputRate (OUTPUT_RATE _rate);
+  OUTPUT_RATE getOutputRate () {return m_outRate;}
   
   // LP filter async data
   void setLPFilter (bool _filter) {m_lpFilter = _filter;}
@@ -213,6 +238,9 @@ class ADXL345
   
   // Current resolution in mg
   double               m_resolution;
+  
+  // Current output rate
+  OUTPUT_RATE          m_outRate;
   
   // LP filter variables
   bool                 m_lpFilter;
